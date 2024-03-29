@@ -1,0 +1,130 @@
+---
+title: "UNICEF Child Labour & Life Expectancy Analysis"
+toc: TRUE
+format: 
+  html:
+    code-fold: true
+    self-contained: true
+editor: visual
+---
+
+## Loading Required Libraries:
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(leaflet)
+```
+
+## Top 10 Countries By Child Labour Threshold:
+
+A bar chart is created to show the top 10 countries by child labour threshold and is attached below. It can be seen that the child labour threshold is highest for Burkina Faso which stands at a whopping 45.23%. The country that follows the Burkina Faso in terms of child labour threshold is the Somalia with 42.5% child labour threshold. Moreover, it can be observed that Cameroon, Togo and Mali are the countries which comes at third, fourth and fifth number with a child labour threshold percentage of 34.07%, 33.97% and 30.67% respectively.
+
+```{r, warning=FALSE, message=FALSE}
+data <- read.csv("unicef_indicator_1.csv")
+
+data_subset <- data %>%
+  select(country, alpha_2_code, time_period, indicator, obs_value, sex,
+         unit_of_measure)
+
+res <- data_subset %>%
+  group_by(country) %>%
+  summarise(Avg_Value = round(mean(obs_value, na.rm = T), 2)) %>%
+  arrange(-Avg_Value) %>%
+  head(10)
+
+# Create the bar chart
+ggplot(res, aes(x = country, y = Avg_Value, fill = country)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  geom_text(aes(label = Avg_Value), vjust = 1.0, color = "black", size = 3) +
+  labs(title = "Top 10 Countries By Average Child Labour Thresholds", 
+       x = "Country",
+       y = "Average Child Labour Threshold") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  guides(fill = FALSE) 
+```
+
+## Relationship Between Time & Child Labour Threshold:
+
+A scatter chart is created to see if there is any relationship between child labour threshold and year or time. A scatter plot with regression line fitted to it is obtained and is attached below. It can be seen that the regression line is flat which shows that there is no relationship between time period and child labour threshold.
+
+```{r, warning=FALSE, message=FALSE}
+# Create the scatter plot with regression line
+ggplot(data_subset, aes(x = time_period, 
+                        y = obs_value)) +
+  geom_point() +  # Add points for the scatter plot
+  geom_smooth(method = "lm", se = FALSE) +  # Add regression line
+  labs(title = "Relationship Between Time & Child Labour Threshold",
+       x = "Year", y = "Child Labour Threshold")+
+  theme_minimal()
+```
+
+## Trend of Life Expectancy:
+
+A bar chart is created to show the average life expectancy over time and is attached below. It can be seen that the life expectancy on average continuously increases with time. We see a very strong positive trend which shows that as the time progresses, the average life expectancy also increases on average. A slight drop in the life expectancy is observed in 2020 and 2021. This might be due to the effect of COVID as it claimed many young lives.
+
+```{r, warning=FALSE, message=FALSE}
+data <- read.csv("unicef_metadata.csv")
+
+res <- data %>%
+  group_by(year) %>%
+  summarise(Life_Expectancy = mean(Life.expectancy.at.birth..total..years.,
+                                   na.rm = T))
+
+# Line chart with markers
+ggplot(res, aes(x = year, y = Life_Expectancy, group = 1)) +
+  geom_line(lwd = 1) +          # Add a line
+  geom_point(color = "red", size = 2) +  # Add points
+  labs(title = "Average Life Expectancy Over Time", 
+       x = "Year", 
+       y = "Average Life Expectancy") +
+  theme_minimal()
+```
+
+## Life Expectancy By Country:
+
+Finally, a world map is created which is attached below. The map shows the average life expectancy by each country. The values are not shown as a tooltip in this case because of too much overlapping. The top 3 countries with highest average life expectancy are Cayman Islands, Liechtenstein and Faroe Islands with values of 82, 80 and 79 years approximately.
+
+```{r, warning=FALSE, message=FALSE}
+res <- data %>%
+  group_by(alpha_3_code) %>%
+  summarise(Life_Expectancy = mean(Life.expectancy.at.birth..total..years.,
+                                   na.rm = T))
+names(res)[1] <- "ISO3_CODE"
+
+countries <- giscoR::gisco_get_countries() %>% 
+  st_centroid()
+
+final <- countries %>% 
+  inner_join(res, by = "ISO3_CODE")
+
+final <- as.data.frame(final)
+
+# Extract latitude and longitude from the 'geometry' column
+final$latitude <- sapply(final$geometry, 
+                         function(point) st_coordinates(point)[, 2])
+final$longitude <- sapply(final$geometry,
+                          function(point) st_coordinates(point)[, 1])
+
+# Create a leaflet map
+m <- leaflet() %>%
+  addTiles() %>%
+  setView(lng = 0, lat = 30, zoom = 2)
+
+# Add markers for each country with life expectancy as popup
+m <- m %>% 
+  addCircleMarkers(
+    data = final,
+    lng = ~latitude,  
+    lat = ~longitude,  
+    radius = 5, 
+    popup = ~paste(NAME_ENGL, "<br>", "Life Expectancy:", Life_Expectancy),
+    color = "red",
+    fillOpacity = 0.8
+  )
+
+# Print the map
+m
+```
